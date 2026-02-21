@@ -127,14 +127,29 @@ class FightNetAPITester:
         """Test post operations"""
         print("\n=== POST OPERATIONS ===")
         
-        # Create post
-        success, response = self.run_test(
-            "Create Post",
-            "POST",
-            "posts",
-            200,
-            data={"caption": "Test training video from backend test", "video_url": None}
-        )
+        # Create post with form data
+        url = f"{self.base_url}/posts"
+        headers = {'Authorization': f'Bearer {self.token}'} if self.token else {}
+        
+        print(f"\n🔍 Testing Create Post...")
+        self.tests_run += 1
+        
+        try:
+            form_data = {'caption': 'Test training video from backend test'}
+            response = requests.post(url, data=form_data, headers=headers)
+            
+            if response.status_code == 200:
+                self.tests_passed += 1
+                self.log_test("Create Post", "PASS", f"Status: {response.status_code}")
+                response_data = response.json()
+                success = True
+            else:
+                self.log_test("Create Post", "FAIL", f"Expected 200, got {response.status_code}")
+                print(f"Response: {response.text}")
+                return False
+        except Exception as e:
+            self.log_test("Create Post", "ERROR", f"Exception: {str(e)}")
+            return False
         
         if not success:
             return False
