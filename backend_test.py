@@ -154,7 +154,7 @@ class FightNetAPITester:
         if not success:
             return False
             
-        post_id = response.get('id')
+        post_id = response_data.get('id')
         if not post_id:
             self.log_test("Post Creation", "FAIL", "No post ID in response")
             return False
@@ -183,14 +183,28 @@ class FightNetAPITester:
         """Test comment operations"""
         print("\n=== COMMENT OPERATIONS ===")
         
-        # First create a post to comment on
-        success, response = self.run_test(
-            "Create Post for Comments",
-            "POST", 
-            "posts",
-            200,
-            data={"caption": "Test post for comments"}
-        )
+        # First create a post to comment on with form data
+        url = f"{self.base_url}/posts"
+        headers = {'Authorization': f'Bearer {self.token}'} if self.token else {}
+        
+        print(f"\n🔍 Testing Create Post for Comments...")
+        self.tests_run += 1
+        
+        try:
+            form_data = {'caption': 'Test post for comments'}
+            response = requests.post(url, data=form_data, headers=headers)
+            
+            if response.status_code == 200:
+                self.tests_passed += 1
+                self.log_test("Create Post for Comments", "PASS", f"Status: {response.status_code}")
+                response_data = response.json()
+                success = True
+            else:
+                self.log_test("Create Post for Comments", "FAIL", f"Expected 200, got {response.status_code}")
+                return False
+        except Exception as e:
+            self.log_test("Create Post for Comments", "ERROR", f"Exception: {str(e)}")
+            return False
         
         if not success:
             return False
