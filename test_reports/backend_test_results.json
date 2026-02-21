@@ -1,0 +1,72 @@
+{
+  "summary": "8/10 tests passed",
+  "results": [
+    {
+      "test": "API Root",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:51.515281"
+    },
+    {
+      "test": "Health Check",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:51.644969"
+    },
+    {
+      "test": "User Registration",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:52.007771"
+    },
+    {
+      "test": "Token Generation",
+      "status": "PASS",
+      "details": "Token received",
+      "timestamp": "2026-02-21T02:10:52.008352"
+    },
+    {
+      "test": "Get Current User",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:52.145517"
+    },
+    {
+      "test": "Create Post",
+      "status": "FAIL",
+      "details": "Expected 200, got 422",
+      "timestamp": "2026-02-21T02:10:52.334694"
+    },
+    {
+      "test": "Create Post for Comments",
+      "status": "FAIL",
+      "details": "Expected 200, got 422",
+      "timestamp": "2026-02-21T02:10:52.517441"
+    },
+    {
+      "test": "Get User Profile",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:52.654658"
+    },
+    {
+      "test": "Update Profile",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:52.762202"
+    },
+    {
+      "test": "Search Users",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:52.867332"
+    },
+    {
+      "test": "Get Conversations",
+      "status": "PASS",
+      "details": "Status: 200",
+      "timestamp": "2026-02-21T02:10:53.025285"
+    }
+  ],
+  "success_rate": "80.0%"
+}
