@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth, API } from "@/App";
 import axios from "axios";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MessageSquare, MoreVertical, Trash2, Send } from "lucide-react";
+import { MessageSquare, MoreVertical, Trash2, Send, User } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -41,6 +41,7 @@ const GloveIcon = ({ active, size = 24 }) => (
 
 export default function PostCard({ post, onUpdate, onDelete }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
@@ -175,12 +176,39 @@ export default function PostCard({ post, onUpdate, onDelete }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-fight-charcoal border-fight-concrete">
               <DropdownMenuItem
+                onClick={() => navigate(`/profile/${post.user_id}`)}
+                className="cursor-pointer text-white focus:bg-fight-concrete focus:text-white"
+                data-testid="view-profile-btn"
+              >
+                <User size={16} className="mr-2" />
+                View Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem
                 onClick={handleDeletePost}
                 className="cursor-pointer text-fight-red focus:bg-fight-concrete focus:text-fight-red"
                 data-testid="delete-post-btn"
               >
                 <Trash2 size={16} className="mr-2" />
                 Delete Post
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {!isOwner && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="text-gray-500 hover:text-white p-2" data-testid="post-menu-trigger">
+                <MoreVertical size={20} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-fight-charcoal border-fight-concrete">
+              <DropdownMenuItem
+                onClick={() => navigate(`/profile/${post.user_id}`)}
+                className="cursor-pointer text-white focus:bg-fight-concrete focus:text-white"
+                data-testid="view-profile-btn"
+              >
+                <User size={16} className="mr-2" />
+                View Profile
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
