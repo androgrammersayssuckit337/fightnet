@@ -603,6 +603,146 @@ async def upload_profile_photo(
 # Mount uploads directory
 app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
+# ============== PAYMENT ENDPOINTS ==============
+
+# Square payment processing
+SQUARE_ACCESS_TOKEN = os.environ.get('SQUARE_ACCESS_TOKEN', '')
+SQUARE_ENVIRONMENT = os.environ.get('SQUARE_ENVIRONMENT', 'sandbox')
+
+class PaymentRequest(BaseModel):
+    sourceId: str
+    amount: int  # in cents
+    recipientId: Optional[str] = None
+    donorName: Optional[str] = None
+    message: Optional[str] = None
+
+class SubscriptionRequest(BaseModel):
+    sourceId: str
+    amount: int  # in cents
+    tierId: str
+    userId: str
+
+@api_router.post("/payments/square")
+async def process_square_payment(payment: PaymentRequest):
+    """Process a Square payment for donations"""
+    if not SQUARE_ACCESS_TOKEN or SQUARE_ACCESS_TOKEN == 'YOUR_SQUARE_ACCESS_TOKEN':
+        # Demo mode - just record the donation
+        donation_id = str(uuid.uuid4())
+        donation_doc = {
+            "id": donation_id,
+            "amount": payment.amount / 100,
+            "recipientId": payment.recipientId,
+            "donorName": payment.donorName or "Anonymous",
+            "message": payment.message,
+            "status": "demo",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.donations.insert_one(donation_doc)
+        return {"success": True, "donationId": donation_id, "mode": "demo"}
+    
+    try:
+        from square.client import Client
+        
+        client = Client(
+            access_token=SQUARE_ACCESS_TOKEN,
+            environment=SQUARE_ENVIRONMENT
+        )
+        
+        result = client.payments.create_payment(
+            body={
+                "source_id": payment.sourceId,
+                "idempotency_key": str(uuid.uuid4()),
+                "amount_money": {
+                    "amount": payment.amount,
+                    "currency": "USD"
+                },
+                "note": f"Donation to {payment.recipientId} from {payment.donorName or 'Anonymous'}"
+            }
+        )
+        
+        if result.is_success():
+            donation_id = str(uuid.uuid4())
+            donation_doc = {
+                "id": donation_id,
+                "payment_id": result.body['payment']['id'],
+                "amount": payment.amount / 100,
+                "recipientId": payment.recipientId,
+                "donorName": payment.donorName or "Anonymous",
+                "message": payment.message,
+                "status": "completed",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.donations.insert_one(donation_doc)
+            return {"success": True, "donationId": donation_id}
+        else:
+            raise HTTPException(status_code=400, detail=str(result.errors))
+            
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Square SDK not installed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/payments/subscription")
+async def process_subscription(subscription: SubscriptionRequest):
+    """Process a Square payment for PRO subscription"""
+    if not SQUARE_ACCESS_TOKEN or SQUARE_ACCESS_TOKEN == 'YOUR_SQUARE_ACCESS_TOKEN':
+        # Demo mode - just upgrade the user
+        await db.users.update_one(
+            {"id": subscription.userId},
+            {"$set": {
+                "pro_tier": subscription.tierId,
+                "pro_since": datetime.now(timezone.utc).isoformat(),
+                "pro_status": "demo"
+            }}
+        )
+        return {"success": True, "mode": "demo", "tier": subscription.tierId}
+    
+    try:
+        from square.client import Client
+        
+        client = Client(
+            access_token=SQUARE_ACCESS_TOKEN,
+            environment=SQUARE_ENVIRONMENT
+        )
+        
+        result = client.payments.create_payment(
+            body={
+                "source_id": subscription.sourceId,
+                "idempotency_key": str(uuid.uuid4()),
+                "amount_money": {
+                    "amount": subscription.amount,
+                    "currency": "USD"
+                },
+                "note": f"FightNet PRO {subscription.tierId} subscription"
+            }
+        )
+        
+        if result.is_success():
+            await db.users.update_one(
+                {"id": subscription.userId},
+                {"$set": {
+                    "pro_tier": subscription.tierId,
+                    "pro_since": datetime.now(timezone.utc).isoformat(),
+                    "pro_status": "active",
+                    "payment_id": result.body['payment']['id']
+                }}
+            )
+            return {"success": True, "tier": subscription.tierId}
+        else:
+            raise HTTPException(status_code=400, detail=str(result.errors))
+            
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Square SDK not installed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/donations")
+async def get_donations(recipientId: Optional[str] = None):
+    """Get donation history"""
+    query = {"recipientId": recipientId} if recipientId else {}
+    donations = await db.donations.find(query, {"_id": 0}).sort("created_at", -1).limit(50).to_list(50)
+    return donations
+
 # ============== HEALTH CHECK ==============
 
 @api_router.get("/")

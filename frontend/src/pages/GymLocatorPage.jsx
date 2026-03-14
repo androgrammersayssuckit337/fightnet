@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MapPin, Search, Navigation, Phone, Globe, Clock, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { APIProvider, Map, AdvancedMarker, useMap } from "@vis.gl/react-google-maps";
 
 // Sample gyms data - Owner can add more or integrate with Google Places API
 const SAMPLE_GYMS = [
@@ -77,12 +78,51 @@ const SAMPLE_GYMS = [
 
 const GYM_TYPES = ["All", "Boxing", "MMA", "Martial Arts", "Muay Thai", "BJJ", "Wrestling"];
 
+// Map markers component (must be inside Map)
+function GymMarkers({ gyms, selectedGym, onSelectGym }) {
+  return (
+    <>
+      {gyms.map((gym) => (
+        <AdvancedMarker
+          key={gym.id}
+          position={{ lat: gym.lat, lng: gym.lng }}
+          onClick={() => onSelectGym(gym)}
+        >
+          <div
+            className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer transition-all shadow-lg ${
+              selectedGym?.id === gym.id
+                ? "bg-fight-red scale-125 border-2 border-white"
+                : "bg-white hover:bg-fight-red hover:text-white"
+            }`}
+          >
+            <MapPin size={20} className={selectedGym?.id === gym.id ? "text-white" : "text-fight-red"} />
+          </div>
+        </AdvancedMarker>
+      ))}
+    </>
+  );
+}
+
+// User location marker
+function UserMarker({ position }) {
+  if (!position) return null;
+  return (
+    <AdvancedMarker position={position}>
+      <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg animate-pulse" />
+    </AdvancedMarker>
+  );
+}
+
 export default function GymLocatorPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("All");
   const [selectedGym, setSelectedGym] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [mapCenter, setMapCenter] = useState({ lat: 34.0522, lng: -118.2437 });
+
+  const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+  const hasValidApiKey = apiKey && apiKey !== "YOUR_GOOGLE_MAPS_API_KEY";
 
   const filteredGyms = SAMPLE_GYMS.filter((gym) => {
     const matchesSearch = gym.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -96,10 +136,12 @@ export default function GymLocatorPage() {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setUserLocation({
+          const newLocation = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          });
+          };
+          setUserLocation(newLocation);
+          setMapCenter(newLocation);
           setLoadingLocation(false);
           toast.success("Location found! Showing nearby gyms.");
         },
@@ -117,6 +159,11 @@ export default function GymLocatorPage() {
   const handleGetDirections = (gym) => {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(gym.address)}`;
     window.open(url, "_blank");
+  };
+
+  const handleSelectGym = (gym) => {
+    setSelectedGym(gym);
+    setMapCenter({ lat: gym.lat, lng: gym.lng });
   };
 
   return (
@@ -172,38 +219,53 @@ export default function GymLocatorPage() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Map Placeholder */}
+        {/* Map */}
         <div className="lg:col-span-2 bg-fight-charcoal border border-fight-concrete rounded-sm overflow-hidden">
           <div className="aspect-video bg-fight-black relative">
-            {/* Map placeholder - Owner can integrate Google Maps or Mapbox */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <MapPin size={64} className="mx-auto text-fight-red mb-4" />
-                <p className="text-gray-400 font-barlow">
-                  Interactive map coming soon
-                </p>
-                <p className="text-gray-600 font-barlow text-sm mt-2">
-                  Integrate Google Maps API or Mapbox
-                </p>
-              </div>
-            </div>
-            
-            {/* Sample gym markers */}
-            <div className="absolute top-4 left-4 flex gap-2">
-              {filteredGyms.slice(0, 4).map((gym, i) => (
-                <button
-                  key={gym.id}
-                  onClick={() => setSelectedGym(gym)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                    selectedGym?.id === gym.id
-                      ? "bg-fight-red text-white scale-110"
-                      : "bg-white text-fight-black hover:bg-fight-red hover:text-white"
-                  }`}
+            {hasValidApiKey ? (
+              <APIProvider apiKey={apiKey}>
+                <Map
+                  style={{ width: "100%", height: "100%" }}
+                  center={mapCenter}
+                  zoom={12}
+                  mapId="fightnet-gym-map"
+                  gestureHandling="greedy"
+                  disableDefaultUI={false}
+                  zoomControl={true}
+                  mapTypeControl={false}
+                  streetViewControl={false}
+                  fullscreenControl={true}
+                  styles={[
+                    { elementType: "geometry", stylers: [{ color: "#1a1a1a" }] },
+                    { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a1a" }] },
+                    { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+                    { featureType: "road", elementType: "geometry", stylers: [{ color: "#2c2c2c" }] },
+                    { featureType: "water", elementType: "geometry", stylers: [{ color: "#0e0e0e" }] },
+                  ]}
                 >
-                  {i + 1}
-                </button>
-              ))}
-            </div>
+                  <GymMarkers gyms={filteredGyms} selectedGym={selectedGym} onSelectGym={handleSelectGym} />
+                  <UserMarker position={userLocation} />
+                </Map>
+              </APIProvider>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center">
+                  <MapPin size={64} className="mx-auto text-fight-red mb-4" />
+                  <p className="text-gray-400 font-barlow">Google Maps API Key Required</p>
+                  <p className="text-gray-600 font-barlow text-sm mt-2">
+                    Add REACT_APP_GOOGLE_MAPS_API_KEY to .env
+                  </p>
+                  <a 
+                    href="https://console.cloud.google.com/apis/credentials"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-fight-red hover:underline text-sm mt-2 block"
+                  >
+                    Get API Key →
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Selected Gym Preview */}
@@ -248,7 +310,7 @@ export default function GymLocatorPage() {
           {filteredGyms.map((gym) => (
             <div
               key={gym.id}
-              onClick={() => setSelectedGym(gym)}
+              onClick={() => handleSelectGym(gym)}
               className={`bg-fight-charcoal border rounded-sm p-4 cursor-pointer transition-all ${
                 selectedGym?.id === gym.id
                   ? "border-fight-red"
@@ -346,12 +408,13 @@ export default function GymLocatorPage() {
       {/* Owner Note */}
       <div className="bg-fight-black border border-fight-concrete rounded-sm p-6">
         <h3 className="font-anton text-lg text-fight-red uppercase tracking-wide mb-2">
-          OWNER NOTE
+          SETUP INSTRUCTIONS
         </h3>
+        <p className="text-gray-400 font-barlow text-sm mb-2">
+          <strong>Google Maps API:</strong> Add your API key to <code className="text-fight-red bg-fight-charcoal px-2 py-1 rounded">/frontend/.env</code> as <code className="text-fight-red bg-fight-charcoal px-2 py-1 rounded">REACT_APP_GOOGLE_MAPS_API_KEY</code>
+        </p>
         <p className="text-gray-400 font-barlow text-sm">
-          To add gyms, edit the <code className="text-fight-red bg-fight-charcoal px-2 py-1 rounded">SAMPLE_GYMS</code> array 
-          in <code className="text-fight-red bg-fight-charcoal px-2 py-1 rounded">/frontend/src/pages/GymLocatorPage.jsx</code>. 
-          For a live map, integrate Google Maps API or Mapbox and replace the map placeholder div.
+          To add gyms, edit the <code className="text-fight-red bg-fight-charcoal px-2 py-1 rounded">SAMPLE_GYMS</code> array with lat/lng coordinates.
         </p>
       </div>
     </div>

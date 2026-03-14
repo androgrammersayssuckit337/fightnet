@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
+import { PaymentForm, CreditCard as SquareCreditCard } from "react-square-web-payments-sdk";
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL;
 
@@ -124,14 +126,59 @@ export default function ProPage() {
   const [uploadedDocs, setUploadedDocs] = useState({});
   const [verificationVideo, setVerificationVideo] = useState(null);
   const [enrollmentBio, setEnrollmentBio] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("card");
+
+  const paypalClientId = process.env.REACT_APP_PAYPAL_CLIENT_ID;
+  const squareAppId = process.env.REACT_APP_SQUARE_APP_ID;
+  const squareLocationId = process.env.REACT_APP_SQUARE_LOCATION_ID;
+
+  const hasPayPal = paypalClientId && paypalClientId !== "YOUR_PAYPAL_CLIENT_ID";
+  const hasSquare = squareAppId && squareAppId !== "YOUR_SQUARE_APP_ID";
 
   const handleUpgrade = (tier) => {
     setSelectedTier(tier);
     setShowUpgradeModal(true);
   };
 
+  const handleSquarePayment = async (token, verifiedBuyer) => {
+    try {
+      const response = await fetch(`${API_BASE}/api/payments/subscription`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceId: token.token,
+          amount: Math.round(selectedTier.price * 100),
+          tierId: selectedTier.id,
+          userId: user?.id,
+        }),
+      });
+
+      if (response.ok) {
+        setIsPro(true);
+        setShowUpgradeModal(false);
+        toast.success(`Welcome to FightNet PRO ${selectedTier.name}! 🏆`);
+      } else {
+        const error = await response.json();
+        toast.error(error.detail || "Payment failed");
+      }
+    } catch (error) {
+      toast.error("Payment processing error");
+    }
+  };
+
+  const handlePayPalApprove = async (data, actions) => {
+    try {
+      const details = await actions.order.capture();
+      setIsPro(true);
+      setShowUpgradeModal(false);
+      toast.success(`Welcome to FightNet PRO ${selectedTier.name}! 🏆`);
+    } catch (error) {
+      toast.error("PayPal payment failed");
+    }
+  };
+
   const handleConfirmUpgrade = () => {
-    // Placeholder for Stripe integration
+    // Fallback for demo mode
     setIsPro(true);
     setShowUpgradeModal(false);
     toast.success(`Welcome to FightNet PRO ${selectedTier.name}! 🏆`);
@@ -540,16 +587,124 @@ export default function ProPage() {
                 ))}
               </ul>
 
-              <Button
-                onClick={handleConfirmUpgrade}
-                className="w-full bg-fight-red hover:bg-red-700 text-white font-barlow font-bold uppercase h-12"
-              >
-                <CreditCard size={18} className="mr-2" />
-                Confirm Upgrade
-              </Button>
+              {/* Payment Methods */}
+              <Tabs value={paymentMethod} onValueChange={setPaymentMethod} className="w-full">
+                <TabsList className="w-full bg-fight-black border border-fight-concrete rounded-sm p-1 grid grid-cols-3">
+                  <TabsTrigger
+                    value="card"
+                    className="font-barlow text-xs uppercase data-[state=active]:bg-fight-red data-[state=active]:text-white"
+                  >
+                    Card
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="paypal"
+                    className="font-barlow text-xs uppercase data-[state=active]:bg-fight-red data-[state=active]:text-white"
+                  >
+                    PayPal
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="cashapp"
+                    className="font-barlow text-xs uppercase data-[state=active]:bg-fight-red data-[state=active]:text-white"
+                  >
+                    Cash App
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="card" className="mt-4">
+                  {hasSquare ? (
+                    <PaymentForm
+                      applicationId={squareAppId}
+                      locationId={squareLocationId}
+                      cardTokenizeResponseReceived={handleSquarePayment}
+                    >
+                      <SquareCreditCard
+                        buttonProps={{
+                          css: {
+                            backgroundColor: "#dc2626",
+                            fontSize: "14px",
+                            color: "#fff",
+                            fontFamily: "Barlow, sans-serif",
+                            fontWeight: "600",
+                            textTransform: "uppercase",
+                            padding: "14px 24px",
+                            "&:hover": { backgroundColor: "#b91c1c" },
+                          },
+                        }}
+                      />
+                    </PaymentForm>
+                  ) : (
+                    <Button
+                      onClick={handleConfirmUpgrade}
+                      className="w-full bg-fight-red hover:bg-red-700 text-white font-barlow font-bold uppercase h-12"
+                    >
+                      <CreditCard size={18} className="mr-2" />
+                      Subscribe ${selectedTier.price}/mo (Demo)
+                    </Button>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="paypal" className="mt-4">
+                  {hasPayPal ? (
+                    <PayPalScriptProvider options={{ clientId: paypalClientId, currency: "USD", vault: true, intent: "subscription" }}>
+                      <PayPalButtons
+                        style={{ layout: "vertical", color: "black", shape: "rect" }}
+                        createOrder={(data, actions) => {
+                          return actions.order.create({
+                            purchase_units: [{
+                              amount: { value: selectedTier.price.toFixed(2), currency_code: "USD" },
+                              description: `FightNet PRO ${selectedTier.name} Subscription`,
+                            }],
+                          });
+                        }}
+                        onApprove={handlePayPalApprove}
+                        onError={(err) => toast.error("PayPal error")}
+                      />
+                    </PayPalScriptProvider>
+                  ) : (
+                    <Button
+                      onClick={handleConfirmUpgrade}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-barlow font-bold uppercase h-12"
+                    >
+                      PayPal (Demo)
+                    </Button>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="cashapp" className="mt-4">
+                  {hasSquare ? (
+                    <PaymentForm
+                      applicationId={squareAppId}
+                      locationId={squareLocationId}
+                      cardTokenizeResponseReceived={handleSquarePayment}
+                    >
+                      <SquareCreditCard
+                        buttonProps={{
+                          css: {
+                            backgroundColor: "#00D632",
+                            fontSize: "14px",
+                            color: "#fff",
+                            fontFamily: "Barlow, sans-serif",
+                            fontWeight: "600",
+                            textTransform: "uppercase",
+                            padding: "14px 24px",
+                            "&:hover": { backgroundColor: "#00B82B" },
+                          },
+                        }}
+                      />
+                    </PaymentForm>
+                  ) : (
+                    <Button
+                      onClick={handleConfirmUpgrade}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white font-barlow font-bold uppercase h-12"
+                    >
+                      Cash App (Demo)
+                    </Button>
+                  )}
+                </TabsContent>
+              </Tabs>
               
               <p className="text-gray-600 font-barlow text-xs text-center">
-                Payment integration coming soon. Cancel anytime.
+                Secure payments via PayPal & Square. Cancel anytime.
               </p>
             </div>
           )}
