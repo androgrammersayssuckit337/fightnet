@@ -508,26 +508,48 @@ async def get_conversations(current_user: dict = Depends(get_current_user)):
         {"_id": 0}
     ).sort("created_at", -1).to_list(1000)
     
+    if not messages:
+        return []
+    
+    # Collect unique partner IDs first (avoiding N+1 query)
+    partner_ids = list(set([
+        msg["receiver_id"] if msg["sender_id"] == user_id else msg["sender_id"]
+        for msg in messages
+    ]))
+    
+    # Batch fetch all partners in single query
+    partners_list = await db.users.find(
+        {"id": {"$in": partner_ids}},
+        {"_id": 0, "password": 0}
+    ).to_list(len(partner_ids))
+    partners = {p["id"]: p for p in partners_list}
+    
+    # Batch fetch unread counts using aggregation
+    unread_pipeline = [
+        {"$match": {
+            "receiver_id": user_id,
+            "sender_id": {"$in": partner_ids},
+            "read": False
+        }},
+        {"$group": {"_id": "$sender_id", "count": {"$sum": 1}}}
+    ]
+    unread_results = await db.messages.aggregate(unread_pipeline).to_list(len(partner_ids))
+    unread_counts = {r["_id"]: r["count"] for r in unread_results}
+    
     # Group by conversation partner
     conversations = {}
     for msg in messages:
         partner_id = msg["receiver_id"] if msg["sender_id"] == user_id else msg["sender_id"]
-        if partner_id not in conversations:
-            partner = await db.users.find_one({"id": partner_id}, {"_id": 0, "password": 0})
-            if partner:
-                unread = await db.messages.count_documents({
-                    "sender_id": partner_id,
-                    "receiver_id": user_id,
-                    "read": False
-                })
-                conversations[partner_id] = {
-                    "user_id": partner_id,
-                    "username": partner["username"],
-                    "user_photo": partner.get("profile_photo"),
-                    "last_message": msg["content"],
-                    "last_message_time": msg["created_at"],
-                    "unread_count": unread
-                }
+        if partner_id not in conversations and partner_id in partners:
+            partner = partners[partner_id]
+            conversations[partner_id] = {
+                "user_id": partner_id,
+                "username": partner["username"],
+                "user_photo": partner.get("profile_photo"),
+                "last_message": msg["content"],
+                "last_message_time": msg["created_at"],
+                "unread_count": unread_counts.get(partner_id, 0)
+            }
     
     return [ConversationResponse(**c) for c in conversations.values()]
 
