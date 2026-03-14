@@ -25,19 +25,25 @@ export const useAuth = () => {
   return context;
 };
 
-// Axios interceptor for auth
-const setupAxiosInterceptors = (token, logout) => {
+// Axios interceptor for auth - set up once
+let interceptorSet = false;
+const setupAxiosInterceptors = (token, logoutFn) => {
   axios.defaults.headers.common["Authorization"] = token ? `Bearer ${token}` : "";
   
-  axios.interceptors.response.use(
-    (response) => response,
-    (error) => {
-      if (error.response?.status === 401) {
-        logout();
+  if (!interceptorSet) {
+    interceptorSet = true;
+    axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          localStorage.removeItem("fightnet_token");
+          localStorage.removeItem("fightnet_user");
+          window.location.href = "/auth";
+        }
+        return Promise.reject(error);
       }
-      return Promise.reject(error);
-    }
-  );
+    );
+  }
 };
 
 function App() {
@@ -46,19 +52,19 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   const login = (userData, authToken) => {
-    setUser(userData);
-    setToken(authToken);
     localStorage.setItem("fightnet_token", authToken);
     localStorage.setItem("fightnet_user", JSON.stringify(userData));
     setupAxiosInterceptors(authToken, logout);
+    setUser(userData);
+    setToken(authToken);
   };
 
   const logout = () => {
-    setUser(null);
-    setToken(null);
     localStorage.removeItem("fightnet_token");
     localStorage.removeItem("fightnet_user");
-    setupAxiosInterceptors(null, logout);
+    setUser(null);
+    setToken(null);
+    setupAxiosInterceptors(null, null);
   };
 
   const updateUser = (userData) => {
@@ -69,15 +75,18 @@ function App() {
   useEffect(() => {
     const initAuth = async () => {
       const savedToken = localStorage.getItem("fightnet_token");
-      const savedUser = localStorage.getItem("fightnet_user");
       
-      if (savedToken && savedUser) {
+      if (savedToken) {
+        // Set token in axios headers immediately
+        setupAxiosInterceptors(savedToken, logout);
+        
         try {
-          setupAxiosInterceptors(savedToken, logout);
           const response = await axios.get(`${API}/auth/me`);
           setUser(response.data);
           setToken(savedToken);
+          localStorage.setItem("fightnet_user", JSON.stringify(response.data));
         } catch (error) {
+          console.log("Token validation failed, logging out");
           logout();
         }
       }
@@ -85,6 +94,7 @@ function App() {
     };
 
     initAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {
